@@ -74,10 +74,12 @@ def run_ef03():
     random_label_mnist = True
 
     #activates neuron wise weight normalization
-    nw_weight_norm = True
+    nw_weight_norm = False
 
     #choose your optimizer, if False Adam is used
     Sgd = False
+
+    #The learning rate (alpha) needs to be changed inside the individual if clause
 
     now = datetime.datetime.now()
     time = str(now.time())[0:8]
@@ -89,19 +91,26 @@ def run_ef03():
         alpha = 2e-2
         path ="./Results/perm_"
         if(nw_weight_norm):
-            path += "nwwn_" + time
+            path += "nwwn_" 
         else:
-            path += "basic_" + time
+            path += "basic_" 
 
     elif(random_label_mnist):
         alpha = 3e-4
         epochs = 8000
         path ="./Results/randm_"
         if(nw_weight_norm):
-            path += "nwwn_" + time
+            path += "nwwn_" 
         else:
-            path += "basic_" + time
+            path += "basic_"
     
+    if(Sgd):
+        path += "Sgd_"
+    else:
+        path += "Adam_"
+    
+    path+= time
+
     device = (
         "cuda"
         if torch.cuda.is_available()
@@ -114,7 +123,7 @@ def run_ef03():
 
     #datasets/Model/Loss init:
     f_train_data = datasets.MNIST(root, download=True, train=True, transform = transforms.ToTensor())
-    model = basic_net().to()
+    model = basic_net().to(device)
     loss_fn = nn.NLLLoss()
 
     if(Sgd):
