@@ -68,13 +68,6 @@ def permut_MNIST(x,idx):
     
 
 def run_ef03():
-    now = datetime.datetime.now()
-    time = str(now.time())[0:8]
-
-
-    epochs = 8000
-    root = '.'
-
     #parameters which define, which dataset variation should be used, if both are true permuted mnist is run
     #for non true nothing runs
     permuted_mnist = False
@@ -86,6 +79,11 @@ def run_ef03():
     #choose your optimizer, if False Adam is used
     Sgd = False
 
+    now = datetime.datetime.now()
+    time = str(now.time())[0:8]
+    epochs = 8000
+    root = '.'
+
     if(permuted_mnist):
         epochs = 1000
         alpha = 2e-2
@@ -96,7 +94,7 @@ def run_ef03():
             path += "basic_" + time
 
     elif(random_label_mnist):
-        alpha = 5e-3
+        alpha = 3e-4
         epochs = 8000
         path ="./Results/randm_"
         if(nw_weight_norm):
@@ -112,10 +110,11 @@ def run_ef03():
         else "cpu"
     )
     print(f"Using {device} device")
+    print("permuted_mnist =", permuted_mnist, " randomlabel_mnist =", random_label_mnist, " nw_weight_norm =", nw_weight_norm, " SGD =", Sgd, " Adam =", not(Sgd), " Alpha =", alpha)
 
     #datasets/Model/Loss init:
     f_train_data = datasets.MNIST(root, download=True, train=True, transform = transforms.ToTensor())
-    model = basic_net().to(device)
+    model = basic_net().to()
     loss_fn = nn.NLLLoss()
 
     if(Sgd):
@@ -169,7 +168,6 @@ def run_ef03():
 
         return correct*100
     
-    
     idx = 0
     mask = 0
     train_dataloader = 0
@@ -201,6 +199,7 @@ def run_ef03():
                 train_data.dataset.targets = torch.randint(0,9,(60000,))
                 train_dataloader = DataLoader(train_data, batch_size=16)
                 avg_onl_akk.append(0)
+                mag.append(model.get_weight_mag())
 
             avg_onl_akk[-1] += train(train_dataloader, model, loss_fn, optimizer, nw_weight_norm=nw_weight_norm)
             
