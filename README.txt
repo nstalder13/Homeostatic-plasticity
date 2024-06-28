@@ -10,4 +10,4 @@ To change parameters go into the test.py file and in the function run_ef0() at t
 To run the code:
 python3 test.py
 
-The results are then saved in the resulting Folder inside the Results folder.
+The results are then saved in the resulting folder inside the Results folder.
