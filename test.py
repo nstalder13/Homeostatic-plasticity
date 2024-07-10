@@ -17,20 +17,39 @@ import pandas as pd
 import datetime
 
 class basic_net(nn.Module):
-    def __init__(self):
+    def __init__(self, device ="cpu", gamma = 0, act_target = [0.3,0.7, -0.3]):
         super(basic_net, self).__init__()
         self.lin1 = nn.Linear(784,100, bias = False)
         self.lin2 = nn.Linear(100,100, bias = False)
         self.lin3 = nn.Linear(100,10, bias = False)
-        self.i = 0
-        
+        self.gamma = gamma
+        self.act_target = act_target
+        self.b_avg = True
+        self.acti_rate = 0.9
+        self.device = device
+        self.avg = [torch.zeros(100,device=device),torch.zeros(100,device=device),torch.zeros(10, device=device)]
+        print(gamma)
 
     def forward(self, x):
-        x = torch.flatten(x,1)
-        x = F.relu(self.lin1(x))
-        x = F.relu(self.lin2(x))
-        x = self.lin3(x)
-        x = F.log_softmax(x, dim=1)
+        if(not(self.train and self.b_avg)):
+            x = torch.flatten(x,1)
+            x = F.relu(self.lin1(x))
+            x = F.relu(self.lin2(x))
+            x = self.lin3(x)
+            x = F.log_softmax(x, dim=1)
+
+        else:
+            x = torch.flatten(x,1)
+            x = F.relu(self.lin1(x))
+            with torch.no_grad():
+                self.avg[0] = (1-self.acti_rate) * x.mean(dim = 0) + self.acti_rate * self.avg[0]
+            x = F.relu(self.lin2(x))
+            with torch.no_grad():
+                self.avg[1] = (1-self.acti_rate) * x.mean(dim = 0) + self.acti_rate * self.avg[1]
+            x = self.lin3(x)
+            with torch.no_grad():
+                self.avg[2] = (1-self.acti_rate) * x.mean(dim = 0) + self.acti_rate * self.avg[2]
+            x = F.log_softmax(x, dim=1)
         return x
     
     def weight_norm(self):
@@ -45,6 +64,21 @@ class basic_net(nn.Module):
                     self.i += 1
                     """
     
+    def acti_based_update(self):
+        with torch.no_grad():
+            for i, param in enumerate(self.parameters()):
+                if(len(param.shape) == 2):
+                    param +=  self.gamma*3 * torch.pow(param,2) * ((self.act_target[i] - self.avg[i]).unsqueeze(1))
+                   
+    def get_acti_loss(self, gamma, power):
+        loss = torch.zeros([], device= self.device)
+        for i, param in enumerate(self.parameters()):
+                if(len(param.shape) == 2 and i<=2):
+                    loss = 0.003* torch.square(param).sum() - self.gamma * (torch.pow(param,3) * ((self.act_target[i] - self.avg[i]).unsqueeze(1))).sum() + loss
+                    if(abs(loss) > 1):
+                        print("High loss: ", i, param.flatten()[param.abs().argmax()].item() ,((self.act_target[i] - self.avg[i]).unsqueeze(1))[((self.act_target[i] - self.avg[i]).unsqueeze(1)).abs().argmax()].item())
+        return loss           
+
     def weight_norm_lay(self):
         with torch.no_grad():
             for param in self.parameters():
@@ -75,20 +109,29 @@ def run_ef03():
 
     #activates neuron wise weight normalization
     nw_weight_norm = False
+    #activates layer wise weight normalization
+    lw_weight_norm = False
 
     #choose your optimizer, if False Adam is used
-    Sgd = False
+    Sgd = True
+
+    #l2 regularization
+    l2 = 0.0
+
+    #the strength of the activation based regularization
+    gamma = 0.002
 
     #The learning rate (alpha) needs to be changed inside the individual if clause
 
     now = datetime.datetime.now()
     time = str(now.time())[0:8]
-    epochs = 8000
+    epochs = 400
     root = '.'
+    batch_size = 16
 
     if(permuted_mnist):
-        epochs = 1000
-        alpha = 2e-2
+        epochs = 100
+        alpha = 1e-2
         path ="./Results/perm_"
         if(nw_weight_norm):
             path += "nwwn_" 
@@ -96,8 +139,8 @@ def run_ef03():
             path += "basic_" 
 
     elif(random_label_mnist):
-        alpha = 3e-4
-        epochs = 8000
+        alpha = 3e-3
+        epochs = 4000
         path ="./Results/randm_"
         if(nw_weight_norm):
             path += "nwwn_" 
@@ -119,26 +162,23 @@ def run_ef03():
         else "cpu"
     )
     print(f"Using {device} device")
-    print("permuted_mnist =", permuted_mnist, " randomlabel_mnist =", random_label_mnist, " nw_weight_norm =", nw_weight_norm, " SGD =", Sgd, " Adam =", not(Sgd), " Alpha =", alpha)
+    print("permuted_mnist =", permuted_mnist, " randomlabel_mnist =", random_label_mnist, " nw_weight_norm =", nw_weight_norm," lw_weight_norm =", lw_weight_norm, " SGD =", Sgd, " Adam =", not(Sgd), " Alpha =", alpha, " Batch size =", batch_size, " l2 =", l2)
 
     #datasets/Model/Loss init:
     f_train_data = datasets.MNIST(root, download=True, train=True, transform = transforms.ToTensor())
-    model = basic_net().to(device)
+    model = basic_net(device=device, gamma=gamma).to(device)
     loss_fn = nn.NLLLoss()
 
     if(Sgd):
-        optimizer = torch.optim.SGD(model.parameters(),alpha)
+        optimizer = torch.optim.SGD(model.parameters(),alpha, weight_decay=l2)
     else:
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=l2)
 
-    def train(dataloader, model, loss_fn, optimizer, idx = 0, permut = False, nw_weight_norm = False):
+    def train(dataloader, model, loss_fn, optimizer, idx = 0, permut = False, nw_weight_norm = False, lw_weight_norm = False):
         size = len(dataloader.dataset)
         model.train()
         test_loss, correct = 0, 0
         num_batches = len(dataloader)
-
-        if(permut):
-            idx = idx.to(device)
 
         for batch, (X, y) in enumerate(dataloader):
             X, y = X.to(device), y.to(device)
@@ -150,15 +190,18 @@ def run_ef03():
             # Compute prediction error
             pred = model.forward(X)
             loss = loss_fn(pred, y)
+            loss = model.get_acti_loss(0,0) + loss
 
             # Backpropagation
             loss.backward()
             optimizer.step()
+
+            #model.acti_based_update()
             
             if(nw_weight_norm):
                 model.weight_norm()
-
-            #model.weight_norm_lay()
+            if(lw_weight_norm):
+                model.weight_norm_lay()
             
             test_loss += loss_fn(pred, y).item()
             temp = (pred.argmax(1) == y).type(torch.float)
@@ -182,20 +225,29 @@ def run_ef03():
     train_dataloader = 0
     avg_onl_akk = []
     mag = []
+    avg_acti_0 = []
+    avg_acti_1 = []
+    avg_acti_2 = []
 
     
     for t in range(epochs):
         
         if(permuted_mnist):
-            mask = torch.randperm(len(f_train_data))[:10000]
+            mask = torch.randperm(len(f_train_data))[:60000]
             train_data = torch.utils.data.Subset(f_train_data, mask)
-            train_dataloader = DataLoader(train_data, batch_size=16)
-            idx = torch.randperm(28*28)
+            train_dataloader = DataLoader(train_data, batch_size=batch_size)
+            idx = torch.randperm(28*28).to(device)
             print(f"\nTask {t+1}\n-------------------------------")
-            avg_onl_akk.append(train(train_dataloader, model, loss_fn, optimizer, idx, permut=True, nw_weight_norm=nw_weight_norm))
+            avg_onl_akk.append(train(train_dataloader, model, loss_fn, optimizer, idx, permut=True, nw_weight_norm=nw_weight_norm, lw_weight_norm=lw_weight_norm))
             mag.append(model.get_weight_mag())
+            avg_acti_0.append((model.avg[0]).mean().item())
+            avg_acti_1.append((model.avg[1]).mean().item())
+            avg_acti_2.append((model.avg[2]).mean().item())
             print("Avg. online accuracy: ", round(avg_onl_akk[-1],1), '%' )
             print("Avg. weight magnitude: ", round(mag[-1],3) )
+            print("Avg. activation layer 0: ", model.avg[0].mean().item())
+            print("Avg. activation layer 1: ",model.avg[1].mean().item())
+            print("Avg. activation layer 2: ",model.avg[2].mean().item())
 
         elif(random_label_mnist):
             if(t % 400 == 0):
@@ -203,22 +255,32 @@ def run_ef03():
                     avg_onl_akk[-1] /= 400
                     print(f"\nTask {t/400}\n-------------------------------")
                     print('Avg. online accuracy: ', round(avg_onl_akk[-1],1), '%')
+                    print("Avg. weight magnitude: ", round(mag[-1],3) )
+                    print("Avg. activation layer 0: ", model.avg[0].mean().item())
+                    print("Avg. activation layer 1: ",model.avg[1].mean().item())
+                    print("Avg. activation layer 2: ",model.avg[2].mean().item())
+                    
+                        
                 mask = torch.randperm(len(f_train_data))[:1200]
                 train_data = torch.utils.data.Subset(f_train_data, mask)
                 train_data.dataset.targets = torch.randint(0,9,(60000,))
-                train_dataloader = DataLoader(train_data, batch_size=16)
+                train_dataloader = DataLoader(train_data, batch_size=batch_size)
+
                 avg_onl_akk.append(0)
                 mag.append(model.get_weight_mag())
+            avg_acti_0.append((model.avg[0]).mean().item())
+            avg_acti_1.append((model.avg[1]).mean().item())
+            avg_acti_2.append((model.avg[2]).mean().item())
 
-            avg_onl_akk[-1] += train(train_dataloader, model, loss_fn, optimizer, nw_weight_norm=nw_weight_norm)
+            avg_onl_akk[-1] += train(train_dataloader, model, loss_fn, optimizer, nw_weight_norm=nw_weight_norm, lw_weight_norm=lw_weight_norm)
             
-
+    """
     if(permuted_mnist):
         avg_onl_akk = np.array(avg_onl_akk).reshape(100,-1).mean(-1)      
         mag = np.array(mag).reshape(100,-1).mean(-1)
     elif(random_label_mnist):
         avg_onl_akk[-1] /= 400
-
+    """
     #saving the data
     os.mkdir(path)
 
@@ -228,13 +290,25 @@ def run_ef03():
     v_df = pd.DataFrame(data=mag).T
     v_df.to_excel(excel_writer = path +"/mag.xlsx")
 
-    print(mag)
-    print(avg_onl_akk)
     plt.plot(avg_onl_akk)
     plt.savefig(path + "/avg_aKK")
     plt.clf()
     plt.plot(mag)
     plt.savefig(path +"/mag")
-        
+    plt.clf()
+    plt.plot(avg_acti_0)
+    plt.savefig(path +"/avg_acti_0")
+    plt.clf()
+    plt.plot(avg_acti_1)
+    plt.savefig(path +"/avg_acti_1")
+    plt.clf()
+    plt.plot(avg_acti_2)
+    plt.savefig(path +"/avg_acti_2")
+
+    with open(path + "/params.txt", "w") as f:
+       print("permuted_mnist =", permuted_mnist, " randomlabel_mnist =", random_label_mnist, " nw_weight_norm =", nw_weight_norm," lw_weight_norm =", lw_weight_norm, " SGD =", Sgd, " Adam =", not(Sgd), " Alpha =", alpha, " l2 =", l2,  file = f)
+    
+    print("permuted_mnist =", permuted_mnist, " randomlabel_mnist =", random_label_mnist, " nw_weight_norm =", nw_weight_norm," lw_weight_norm =", lw_weight_norm, " SGD =", Sgd, " Adam =", not(Sgd), " Alpha =", alpha, " l2 =", l2)
+
 run_ef03()
 
