@@ -1,0 +1,4 @@
+name: WeightHomeostastisAgent
+params:
+  gamma: 0.00002
+  avg_rate: 0.9999

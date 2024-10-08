@@ -1,0 +1,3 @@
+name: NeuronWiseWeightNormAgent
+params:
+  w_std: [10,0.8,1]
