@@ -1,5 +1,5 @@
 defaults:
-  - agent: weighthomeo
+  - agent: l2
   - env: random_label_mnist
   - _self_
   - override hydra/launcher: joblib
@@ -15,13 +15,13 @@ model:
 
 main:
   seed: 0
-  device: "cpu"
+  device: "gpu"
   loss_fn: CrossEntropyLoss
   measure_forgetting: False
 
 optimizer_cfg:
   name: SGD   # One of [Adam, SGD]
-  lr: 0.002
+  lr: {'min': 1e-4, 'max': 1e-1}
   momentum: 0.0
   weight_decay: 0.0
 
@@ -33,4 +33,5 @@ wandb:
   project: 'cl-position-paper-${env.name}'
   name: '${agent.name}'
 
-sweep: 'default'
+sweep: 
+  

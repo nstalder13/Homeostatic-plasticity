@@ -1,3 +1,4 @@
 name: L2Agent
 params:
-  l2_weight: 0.02
+  l2_weight: {'min': 1e-4, 'max': 1e-1}
+
