@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 import random
 import hydra
+from pathlib import Path
 
 from omegaconf import OmegaConf
 
@@ -41,8 +42,32 @@ def main(cfg):
 
     sweep_configuration['metric'] = metric
 
-    if cfg.agent.name == 'L2Agent':
+    
+    if cfg.agent.name == 'L2Agent' or cfg.agent.name == 'L2InitAgent':
         sweep_configuration['parameters']['agent_params_l2_weight'] = cfg_0['agent']['params']['l2_weight']
+
+    if cfg.agent.name == 'ShrinkAndPerturbAgent':
+        sweep_configuration['parameters']['agent_params_shrink'] = cfg_0['agent']['params']['shrink']
+        sweep_configuration['parameters']['agent_params_perturb_scale'] = cfg_0['agent']['params']['perturb_scale']
+
+    if cfg.agent.name == 'ContinualBackpropAgent':
+        sweep_configuration['parameters']['agent_params_replacement_rate'] = cfg_0['agent']['params']['replacement_rate']
+    
+    if cfg.agent.name == 'ReDOAgent':
+        sweep_configuration['parameters']['agent_params_recycle_period'] = cfg_0['agent']['params']['recycle_period']
+        sweep_configuration['parameters']['agent_params_recycle_threshold'] = cfg_0['agent']['params']['recycle_threshold']
+    
+
+    if cfg.agent.name == 'NeuronWiseWeightNormAgent':
+        if(cfg.model.model_name == "CNN"):
+            temp = 3
+        else:
+            temp = 5
+
+        for i in range(temp):
+            sweep_configuration['parameters']['agent_params_w_std'+str(i)] = cfg_0['agent']['params']['w_std']
+
+
 
 
     # Flattening the rest of the config and adding non-sweep parameters
@@ -117,14 +142,35 @@ def flatten_dict(d, parent_key='', sep='_'):
 def train(cfg =  None):
     # Initialize WandB
 
-    wandb.init()
+    wandb.init(settings=wandb.Settings(
+        log_internal=str(Path(__file__).parent / 'wandb' / 'null'),
+    ))
     
     cfg.optimizer_cfg.lr = wandb.config['optimizer_cfg_lr']
 
-    if cfg.agent.name == 'L2Agent':
+    if cfg.agent.name == 'L2Agent' or cfg.agent.name == 'L2InitAgent':
         cfg.agent.params.l2_weight = wandb.config['agent_params_l2_weight']
 
+    if cfg.agent.name == 'ShrinkAndPerturbAgent':
+        cfg.agent.params.shrink = wandb.config['agent_params_shrink']
+        cfg.agent.params.perturb_scale = wandb.config['agent_params_perturb_scale']
+
+    if cfg.agent.name == 'ContinualBackpropAgent':
+        cfg.agent.params.replacement_rate = wandb.config['agent_params_replacement_rate']
+
+    if cfg.agent.name == 'ReDOAgent':
+        cfg.agent.params.recycle_period = wandb.config['agent_params_recycle_period']
+        cfg.agent.params.recycle_threshold = wandb.config['agent_params_recycle_threshold']
     
+    if cfg.agent.name == 'NeuronWiseWeightNormAgent':
+        if(cfg.model.model_name == "CNN"):
+            temp = 3
+        else:
+            temp = 5
+        cfg.agent.params.w_std = []
+        for i in range(temp):
+            cfg.agent.params.w_std.append(wandb.config['agent_params_w_std'+str(i)])
+
     
     # Seeds
     random.seed(cfg.main.seed)
@@ -208,10 +254,16 @@ def train(cfg =  None):
                        'task_id': task_id}
             wandb.log(metrics)
             
-            for i in range(agent.model.num_hidden):
-                wandb.log({'act_layer' + str(i): agent.model.activations[agent.model.layer_names[i]].mean()})
-                if cfg.agent.name == "WeightHomeostastisAgent":
-                    wandb.log({('avg_act_layer' + str(i)): agent.avg[i].mean()})
+            if(cfg.model.model_name == "MLP" ):
+                for i in range(agent.model.num_hidden):
+                    wandb.log({'act_layer' + str(i): agent.model.activations[agent.model.layer_names[i]].mean()})
+                    if cfg.agent.name == "WeightHomeostastisAgent":
+                        wandb.log({('avg_act_layer' + str(i)): agent.avg[i].mean()})
+            else:
+                for i in range(4):
+                    wandb.log({'act_layer' + str(i): agent.model.activations[agent.model.layer_names[i]].mean()})
+                    if cfg.agent.name == "WeightHomeostastisAgent":
+                        wandb.log({('avg_act_layer' + str(i)): agent.avg[i].mean()})
                 
 
         # Update average accuracy for the current task.
