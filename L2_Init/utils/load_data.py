@@ -15,7 +15,7 @@ def shuffle_data(images, labels, rng):
 def load_mnist_data(rng, resize=None):
     transform = transforms.Compose([transforms.ToTensor(),
                                     transforms.Normalize((0.5,), (0.5,))])
-    #transform = transforms.ToTensor()
+    transform = transforms.ToTensor()
     
     if resize is not None:
         transform = transforms.Compose([transforms.ToTensor(),
@@ -25,7 +25,7 @@ def load_mnist_data(rng, resize=None):
     # Download and load the training data.
     trainset = torchvision.datasets.MNIST(
         '~/.pytorch/MNIST_data/', download=True, train=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False, num_workers= 16,pin_memory=True)
 
     # Get all train images and labels.
     # train_images, train_labels = trainset.data[0], trainset.targets[0]
@@ -111,11 +111,11 @@ def load_cifar_data(rng):
                [transforms.ToTensor(),
                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.247, 0.243, 0.261))])
     # Normalization values from here: https://github.com/kuangliu/pytorch-cifar/issues/19
-
+    transform = transforms.ToTensor()
     # Download and load the training data.   
     trainset = torchvision.datasets.CIFAR10(root='./cifar-10-data', train=True,
                                             download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=len(trainset), shuffle=False, num_workers= 16,pin_memory=True)
     
     # Get all train images and labels.
     # train_images, train_labels = trainset.data[0], trainset.targets[0]
