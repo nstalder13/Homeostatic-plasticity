@@ -599,6 +599,8 @@ class ShrinkAndPerturbAgent(BaseAgent):
 
         # Sample perturbation
         random_model = self.model_constructor()
+        random_model.to(self.device)
+        
 
         params = [p for p in self.model.parameters()]
         random_params = [p for p in random_model.parameters()]
@@ -739,7 +741,7 @@ class ContinualBackpropAgent(BaseAgent):
             )
         elif isinstance(self.model, ConvNet):
             self.gnt = ConvGnT(
-                net=self.model.layers,
+                net=self.model.to(device).layers,
                 hidden_activation='relu',
                 opt=self.optimizer,
                 replacement_rate=replacement_rate,
@@ -809,8 +811,12 @@ class NeuronWiseWeightNormAgent(BaseAgent):
                     F.normalize(param, dim = 1, out = param)
                     param *= self.w_std[k]
                     k+=1
-                else:
-                    F.normalize(param, dim = -1, out = param)*0.8
+                elif(len(param.shape)== 4):
+                    F.normalize(param, dim = [-1,-2], out = param)
+                    param *= self.w_std[k]
+                    k+=1
+                elif(len(param.shape)== 1):
+                    F.normalize(param, dim = -1, out = param)
 
 
 class WeightHomeostastisAgent(BaseAgent):
