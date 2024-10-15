@@ -59,17 +59,17 @@ class ConvGnT(object):
 
         for i in range(self.num_hidden_layers):
             if isinstance(self.net[i * 2], Conv2d):
-                self.util.append(zeros(self.net[i * 2].out_channels))
-                self.bias_corrected_util.append(zeros(self.net[i * 2].out_channels))
-                self.ages.append(zeros(self.net[i * 2].out_channels))
-                self.mean_feature_act.append(zeros(self.net[i * 2].out_channels))
-                self.mean_abs_feature_act.append(zeros(self.net[i * 2].out_channels))
+                self.util.append(zeros(self.net[i * 2].out_channels, device = device))
+                self.bias_corrected_util.append(zeros(self.net[i * 2].out_channels, device = device))
+                self.ages.append(zeros(self.net[i * 2].out_channels, device = device))
+                self.mean_feature_act.append(zeros(self.net[i * 2].out_channels, device = device))
+                self.mean_abs_feature_act.append(zeros(self.net[i * 2].out_channels, device = device))
             elif isinstance(self.net[i * 2], Linear):
-                self.util.append(zeros(self.net[i * 2].out_features))
-                self.bias_corrected_util.append(zeros(self.net[i * 2].out_features))
-                self.ages.append(zeros(self.net[i * 2].out_features))
-                self.mean_feature_act.append(zeros(self.net[i * 2].out_features))
-                self.mean_abs_feature_act.append(zeros(self.net[i * 2].out_features))
+                self.util.append(zeros(self.net[i * 2].out_features, device = device))
+                self.bias_corrected_util.append(zeros(self.net[i * 2].out_features, device = device))
+                self.ages.append(zeros(self.net[i * 2].out_features, device = device))
+                self.mean_feature_act.append(zeros(self.net[i * 2].out_features, device = device))
+                self.mean_abs_feature_act.append(zeros(self.net[i * 2].out_features, device = device))
 
         self.accumulated_num_features_to_replace = [0 for i in range(self.num_hidden_layers)]
         self.m = torch.nn.Softmax(dim=1)
@@ -212,7 +212,7 @@ class ConvGnT(object):
             if isinstance(self.net[i * 2], Conv2d) and isinstance(self.net[i * 2 + 2], Linear):
                 features_to_replace_output_indices[i] = \
                     (new_features_to_replace*self.num_last_filter_outputs).repeat_interleave(self.num_last_filter_outputs) + \
-                    tensor([i for i in range(self.num_last_filter_outputs)]).repeat(new_features_to_replace.size()[0])
+                    tensor([i for i in range(self.num_last_filter_outputs)], device = new_features_to_replace.device).repeat(new_features_to_replace.size()[0])
 
         return features_to_replace_input_indices, features_to_replace_output_indices, num_features_to_replace
 
@@ -255,7 +255,7 @@ class ConvGnT(object):
                 elif isinstance(current_layer, Conv2d):
                     current_layer.weight.data[features_to_replace_input_indices[i], :] *= 0.0
                     current_layer.weight.data[features_to_replace_input_indices[i], :] -= - \
-                        empty([num_features_to_replace[i]] + list(current_layer.weight.shape[1:])). \
+                        empty([num_features_to_replace[i]] + list(current_layer.weight.shape[1:]),device =  current_layer.weight.data.device ). \
                             uniform_(-self.bounds[i], self.bounds[i])
 
                 current_layer.bias.data[features_to_replace_input_indices[i]] *= 0.0
